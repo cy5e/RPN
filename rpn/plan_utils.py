@@ -2,6 +2,10 @@ from __future__ import print_function
 
 import numpy as np
 
+import sys
+sys.path.append('..')
+import time
+
 from third_party.pybullet.utils.pybullet_tools.kuka_primitives import BodyPose, BodyConf, Command, get_grasp_gen, \
     get_stable_gen, get_ik_fn, get_free_motion_gen, \
     get_holding_motion_gen, get_movable_collision_test
@@ -162,12 +166,13 @@ def main():
     from rpn.env_utils import pb_session
 
     def load_objects():
-        world = World()
+        world = World(['table', 'stove', 'sink', 'plate', 'pot', 'cabbage', 'floor', 'block'])
+        #world = World()
         with HideOutput():
             # robot = load_model(DRAKE_IIWA_URDF)
             world.load_robot(URDFS['ph_gripper'])
             world.load_object(URDFS['short_floor'], 'floor', fixed=True)
-            world.create_shape('shape_box', 'block', w=0.1, h=0.1, l=0.1, n_copy=5, randomly_place_on=world.id('floor'))
+            world.create_shape('shape_box', 'block', w=0.1, h=0.1, l=0.1, color=None, n_copy=5, randomly_place_on=world.id('floor'))
             set_default_camera()
         return world
     while True:
@@ -176,17 +181,21 @@ def main():
             planner = ActionPlanner(world)
             with world_saved():
                 plan = planner.plan('pick', (world.id('block/0'),))
-            plan.execute(0.001)
+            time.sleep(0.5)
+            #plan.execute(0.001)
             with world_saved():
                 plan = planner.plan('place', (world.id('block/0'), world.id('block/1')))
-            plan.execute(0.001)
+            time.sleep(0.5)
+            #plan.execute(0.001)
 
             with world_saved():
                 plan = planner.plan('pick', (world.id('block/2'),))
-            plan.execute(0.001)
+            time.sleep(0.5)
+            #plan.execute(0.001)
             with world_saved():
                 plan = planner.plan('place', (world.id('block/2'), world.id('block/0')))
-            plan.execute(0.001)
+            time.sleep(0.5)
+            #plan.execute(0.001)
 
 
 if __name__ == '__main__':
