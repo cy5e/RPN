@@ -88,6 +88,7 @@ def sample_scene():
         world.load_object(URDFS['plate'], 'plate', fixed=False)
         world.load_object(URDFS['pot'], 'pot', fixed=True)
         world.load_object(URDFS['cabbage'], 'cabbage', fixed=False)
+
         world.place(world.id('stove/0'), world.id('table/0'), [[0.4, 0, 0], [0, 0, 0, 1]])
         world.place(world.id('sink/0'), world.id('table/0'), [[-0.2, -0.4, 0], [0, 0, 0, 1]])
         # world.place(world.id('plate/0'), world.id('table/0'), [[-0.3, -0.3, 0], [0, 0, 0, 1]])
@@ -294,6 +295,11 @@ class World(object):
     def fixed(self):
         return self.__class__([o for o in self.tolist() if o.fixed])
 
+    def dump(self, filename):
+      pass
+
+    def load(self, filename):
+      pass
 
 class WorldObject(Body):
     def __init__(self, uid, type_name, fixed, boundary=None, scale=None):
