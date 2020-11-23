@@ -103,9 +103,13 @@ class TaskEnvCook(TaskEnvBlock):
     Kitchen3D environment
     """
     COOK_COLOR = [0.396, 0.263, 0.129, 1]
-    CLEAN_COLOR = [1, 1, 1, 0.5]
+    CLEAN_COLOR = [0.1, 0.1, 0.8, 0.5]
+
     STOVE_ACTIVE_COLOR = [0.8, 0, 0, 1]
+    STOVE_INACTIVE_COLOR = [1, 1, 1, 1]
+
     SINK_ACTIVE_COLOR = [0, 0, 0.8, 1]
+    SINK_INACTIVE_COLOR = [1, 1, 1, 1]
 
     def __init__(self, objects):
         TaskEnv.__init__(self, objects)
@@ -120,15 +124,16 @@ class TaskEnvCook(TaskEnvBlock):
             'pick': self.pick,
             'place': self.place,
             'activate': self.activate,
+            'deactivate': self.deactivate,
         })
 
     @staticmethod
     def action_names():
-        return ['noop', 'pick', 'place', 'activate']
+        return ['noop', 'pick', 'place', 'activate', 'deactivate']
 
     @staticmethod
     def num_action_args():
-        return [1, 1, 2, 1]
+        return [1, 1, 2, 1, 1]
 
     @staticmethod
     def unitary_predicates():
@@ -147,11 +152,8 @@ class TaskEnvCook(TaskEnvBlock):
             if self.objects.type(c) in COOKWARES:
                 cookware = c
                 for ing in self._find_atop(cookware):
-                    cook_fruit = (self.objects.type(c) == 'pan' and self.objects.type(ing) in FRUITS)
-                    cook_veggie = (self.objects.type(c) == 'pot' and self.objects.type(ing) in VEGGIES)
-                    if (cook_fruit or cook_veggie) and self.symbolic_state[(ing,)]['cleaned']:
-                        self._apply((ing,), 'cooked', negated=False)
-                        p.changeVisualShape(ing, -1, rgbaColor=self.COOK_COLOR)
+                    self._apply((ing,), 'cooked', negated=False)
+                    p.changeVisualShape(ing, -1, rgbaColor=self.COOK_COLOR)
 
     def pf_cleaned(self):
         sink = self.objects.id('sink/0')
@@ -166,9 +168,13 @@ class TaskEnvCook(TaskEnvBlock):
         sink = self.objects.id('sink/0')
         if self.symbolic_state[(sink,)]['activated']:
             p.changeVisualShape(sink, -1, rgbaColor=self.SINK_ACTIVE_COLOR)
+        else:
+            p.changeVisualShape(sink, -1, rgbaColor=self.SINK_INACTIVE_COLOR)
         stove = self.objects.id('stove/0')
         if self.symbolic_state[(stove,)]['activated']:
             p.changeVisualShape(stove, -1, rgbaColor=self.STOVE_ACTIVE_COLOR)
+        else:
+            p.changeVisualShape(stove, -1, rgbaColor=self.STOVE_INACTIVE_COLOR)
 
     def activate(self, o):
         if self.applicable('activate', o):
