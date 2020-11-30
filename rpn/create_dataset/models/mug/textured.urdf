@@ -1,0 +1,31 @@
+<?xml version="1.0" ?>
+<robot name="textured">
+  <material name="color">
+    <color rgba="1 1 1 1"/>
+  </material>
+
+  <link name="base_link">
+    <contact>
+      <lateral_friction value="1.0"/>
+      <rolling_friction value="0.001"/>
+      <spinning_friction value="0.001"/>
+      <inertia_scaling value="1.0"/>
+    </contact>
+
+    <collision>
+      <origin rpy="0 0 0" xyz="0 0 0"/>
+      <geometry>
+        <mesh filename="model_normalized.obj" scale="1 1 1"/>
+      </geometry>
+      <material name="color"/>
+    </collision>
+
+    <visual>
+      <origin rpy="0 0 0" xyz="0 0 0"/>
+      <geometry>
+        <mesh filename="model_normalized.obj" scale="1 1 1"/>
+      </geometry>
+      <material name="color"/>
+    </visual>
+  </link>
+</robot>

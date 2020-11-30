@@ -17,6 +17,7 @@ from bullet_envs import TaskEnvCook
 from rpn.plan_utils import *
 from rpn.env_utils import World, URDFS, pb_session, world_saved
 from init import load_objects
+from objects import *
 
 from collections import defaultdict
 import argparse
@@ -32,137 +33,30 @@ import shutil
 import time
 import torch
 
-FRUITS = ['apple', 'pear', 'lemon', 'banana', 'peach', 'orange', 'plum', 'strawberry']
-VEGGIES = ['cabbage', 'tomato', 'pumpkin']
-INGREDIENTS = FRUITS + VEGGIES
-
-COOKWARES = ['pot', 'pan']
-CONTAINERS = ['plate']
-ACTIVATABLE = ['stove', 'sink']
-GRASPABLE = INGREDIENTS + COOKWARES + CONTAINERS
-
-def valid_pick_actions(env):
-  def all_pick_actions(objs):
-    for subject in objs:
-      for dest in objs:
-        yield ('pick+place', (subject, dest))
-
-  def is_intuitively_valid(action):
-    _, (subject, dest) = action
-    subject_type = subject._name.split('/')[0]
-    dest_type = dest._name.split('/')[0]
-    if subject._name == dest._name:
-      return False
-    if subject_type in ['table', 'stove', 'sink']:
-      return False
-    if subject_type in ['pot', 'pan'] and dest_type in ['pot', 'pan']:
-      return False
-    if dest_type not in ['table', 'stove', 'sink', 'plate', 'pot', 'pan']:
-      return False
-    return True
-
-  def is_valid(action):
-    _, (subject, dest) = action
-    return env.applicable('pick', env.objects.id(subject._name)) \
-        and env.applicable('place', env.objects.id(subject._name), env.objects.id(dest._name)) \
-        and is_intuitively_valid(action)
-
-  return filter(is_valid, all_pick_actions(env.objects.tolist()))
-
-
-def valid_activate_actions(env):
-  def all_activate_actions(objs):
-    for obj in objs:
-      yield ('activate', (obj,))
-
-  def is_valid(action):
-    _, (obj,) = action
-    return env.applicable('activate', env.objects.id(obj._name))
-
-  return filter(is_valid, all_activate_actions(env.objects.tolist()))
-
-
-def valid_actions(env):
-  return itertools.chain(
-    valid_pick_actions(env),
-    valid_activate_actions(env)
-  )
-
-
-def valid_actions_given_state(env, state):
-  def is_valid(action):
-    if action[0] == 'activate' and action[1][0]._name in state['activated_objs']:
-      return False
-    return True
-  return filter(is_valid, valid_actions(env))
-
-
 
 def valid_action_sequence(env, episode_length):
-  actions = []
-  state = { 'activated_objs': set() }
-  attempts = 0
+  world = env.objects
+  ids = [world.id(obj._name) for obj in world.tolist()]
 
-  while len(actions) < episode_length:
-    next_actions = list(valid_actions_given_state(env, state))
-
-    if len(next_actions) == 0:
-      action = None
-    else:
-      action = random.sample(next_actions, 1)[0]
-
-    if action:
-      actions.append(action)
-
-      if action[0] == 'activate':
-        state['activated_objs'].add(action[1][0]._name)
-    else:
-      attempts += 1
-      actions = []
-      state = { 'activated_objs': set() }
-
-      if attempts >= 100:
-        raise Exception('Can\'t create valid action sequence.')
-
-  return actions
-
-
-def valid_action_sequence(env, episode_length):
-  env_table = None
-  env_ingredients = []
-  env_cookwares = []
-  env_containers = []
-  env_sinks = []
-  env_stoves = []
-
-  for obj in env.objects.tolist():
-    id = env.objects.id(obj._name)
-    if env.objects.type(id) in ['table']:
-      env_table = id
-    if env.objects.type(id) in INGREDIENTS:
-      env_ingredients.append(id)
-    elif env.objects.type(id) in COOKWARES:
-      env_cookwares.append(id)
-    elif env.objects.type(id) in CONTAINERS:
-      env_containers.append(id)
-    elif env.objects.type(id) in ['sink']:
-      env_sinks.append(id)
-    elif env.objects.type(id) in ['stove']:
-      env_stoves.append(id)
+  env_table = list(filter(lambda id: env.objects.type(id) == 'table', ids))[0]
+  env_ingredients = list(filter(lambda id: env.objects.type(id) in INGREDIENTS, ids))
+  env_cookware = list(filter(lambda id: env.objects.type(id) in COOKWARE, ids))
+  env_containers = list(filter(lambda id: env.objects.type(id) in CONTAINERS, ids))
+  env_sinks = list(filter(lambda id: env.objects.type(id) == 'sink', ids))
+  env_stoves = list(filter(lambda id: env.objects.type(id) == 'stove', ids))
 
   actions = []
   while len(actions) < episode_length:
     ingredient = random.sample(env_ingredients, 1)[0]
+    env_ingredients.remove(ingredient)
 
     wash = True if np.random.random() < 0.5 else False
     cook = True if np.random.random() < 0.5 else False
 
-    sink = random.sample(env_sinks, 1)[0]
     stove = random.sample(env_stoves, 1)[0]
-    cookware = random.sample(env_cookwares, 1)[0]
+    cookware = random.sample(env_cookware, 1)[0]
+    sink = random.sample(env_sinks, 1)[0]
     container = random.sample(env_containers, 1)[0]
-
-    env_ingredients.remove(ingredient)
 
     if wash:
       actions.append(('pick+place', (ingredient, sink)))
@@ -179,16 +73,13 @@ def valid_action_sequence(env, episode_length):
 
     if cook:
       actions.append(('pick+place', (cookware, env_table)))
-
   return actions
-
 
 def execute_action(action, planner, env):
   world = env.objects
   ids = action[1] # tuple(world.id(obj._name) for obj in action[1])
   if action[0] == 'pick+place':
     with world_saved():
-      print(world.name(ids[0]))
       plan = planner.plan('pick', (ids[0],))
       pick_plan, pick_pose = plan
       pick_command = ('pick', (ids[0], pick_pose), pick_plan)
@@ -209,14 +100,11 @@ def execute_action(action, planner, env):
   else:
     raise 'Invalid action.'
 
-
 def basic_view(camera):
   camera.set_pose_ypr([0, 0, 0], 1.3, 180, -45)
 
-
 def overhead_view(camera):
   camera.set_pose_ypr([0, 0, 0], 1.3, 180, -90)
-
 
 def show(camera, env):
   overhead_view(camera)
@@ -228,7 +116,6 @@ def show(camera, env):
   plt.imshow(rgba)
   plt.show()
 
-
 def show_angles(camera):
   for set_view in [basic_view, overhead_view]:
     set_view(camera)
@@ -236,7 +123,6 @@ def show_angles(camera):
     for modal in modalities:
       plt.imshow(modal)
       plt.show()
-
 
 def views_to_tensor(camera):
   orig_renderer = camera._renderer
@@ -255,7 +141,6 @@ def views_to_tensor(camera):
   imgs = np.concatenate(imgs, -1)
   return imgs
 
-
 def save_timestep(env, camera, output_dir, episode_index, action_index):
   world = env.objects
   prefix = '{}/{}_{}'.format(output_dir, episode_index, action_index)
@@ -273,7 +158,6 @@ def save_timestep(env, camera, output_dir, episode_index, action_index):
   # Restore via `pickle.load(file.pkl)`
   json.dump(pose_info, open(prefix + '_poses.json', 'w'))
 
-
 def save_episode(env, action_seq, output_dir, episode_index, random_state):
   world = env.objects
   prefix = '{}/{}'.format(output_dir, episode_index)
@@ -289,13 +173,12 @@ def save_episode(env, action_seq, output_dir, episode_index, random_state):
   # Restore via `pickle.load(file.pkl)`
   pickle.dump(random_state, open(prefix + '_random_state.pkl', 'wb'))
 
-
 def main(
     num_episodes=100,
     episode_length=3,
     num_ingredients=3,
     num_containers=3,
-    num_cookwares=3,
+    num_cookware=3,
     num_objects=2,
     seed=0,
     display=False,
@@ -317,7 +200,7 @@ def main(
     'episode_length': episode_length,
     'num_containers': num_containers,
     'num_ingredients': num_ingredients,
-    'num_cookwares': num_cookwares,
+    'num_cookware': num_cookware,
     'num_objects': num_objects,
   }
 
@@ -335,17 +218,15 @@ def main(
         cameraPitch=-89,
         cameraTargetPosition=[0, 0, 0]
       )
-
       #p.configureDebugVisualizer(p.COV_ENABLE_SHADOWS, 0)
 
       random_state = random.getstate()
 
       # Load environment with objects
-      env = TaskEnvCook(load_objects(num_ingredients, num_cookwares, num_containers, num_objects, random_state))
-
+      world = load_objects(num_ingredients, num_cookware, num_containers, num_objects, random_state)
+      env = TaskEnvCook(world)
       env.reset()
       world = env.objects
-      objs = world.tolist()
       planner = ActionPlanner(world)
 
       #p.changeVisualShape(world._robot, -1, rgbaColor=[0.5, 0.5, 0.5, 0])
@@ -383,7 +264,7 @@ def parse_args():
   parser.add_argument('--episode_length', default=3, type=int)
   parser.add_argument('--num_episodes', default=100, type=int)
   parser.add_argument('--num_ingredients', default=4, type=int)
-  parser.add_argument('--num_cookwares', default=2, type=int)
+  parser.add_argument('--num_cookware', default=2, type=int)
   parser.add_argument('--num_objects', default=2, type=int)
   parser.add_argument('--num_containers', default=2, type=int)
   parser.add_argument('--output_dir', default='dataset', type=str)

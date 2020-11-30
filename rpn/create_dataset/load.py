@@ -26,7 +26,7 @@ def main(
   # Looks like: {'num_episodes': 3, 'episode_length': 10, 'num_containers': 2, 'num_ingredients': 4, 'num_cookwares': 2, 'num_objects': 2}
   metadata = json.load(open(input_dir + '/metadata.json', 'r'))
   num_episodes, episode_length = metadata['num_episodes'], metadata['episode_length']
-  num_containers, num_ingredients, num_cookwares, num_objects = metadata['num_containers'], metadata['num_ingredients'], metadata['num_cookwares'], metadata['num_objects']
+  num_containers, num_ingredients, num_cookwares, num_objects = metadata['num_containers'], metadata['num_ingredients'], metadata['num_cookware'], metadata['num_objects']
   #print('metadata:\n{}'.format(metadata))
 
   print('Number of episodes: {}'.format(num_episodes))
@@ -96,10 +96,12 @@ def main(
       Images are always 240 x 320.
       First 6 and last 6 channels correspond to different angles (default and overhead, respectively).
       First 4 channels (of 6) correspond to RGBA, then 1 channel depth, then 1 channel segmentation mask.
+
+      REMEMBER: call .astype(np.int32) on RGBA images.
       """
-      image_tensor = torch.load(prefix + '_views.pyt').astype(np.int32)
+      image_tensor = torch.load(prefix + '_views.pyt')
       #print('image_tensor:\n{}'.format(image_tensor))
-      #plt.imshow(image_tensor[:, :, :4])
+      #plt.imshow(image_tensor[:, :, :4].astype(np.int32))
       #plt.show()
 
 def parse_args():
