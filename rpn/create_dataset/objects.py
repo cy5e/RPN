@@ -45,6 +45,7 @@ ENV_OBJECTS = ['ph_gripper', 'short_floor']
 FRUITS = ['apple', 'pear', 'lemon', 'banana', 'peach', 'orange', 'plum', 'strawberry']
 VEGGIES = ['cabbage', 'tomato', 'pumpkin']
 INGREDIENTS = FRUITS + VEGGIES
+PEELABLE = FRUITS + VEGGIES
 
 COOKWARE = ['pot', 'pan']
 CONTAINERS = ['plate']
@@ -52,7 +53,5 @@ ACTIVATABLE = ['stove', 'sink']
 
 GRASPABLE = INGREDIENTS + COOKWARE + CONTAINERS
 
-OBJECTS = [
-  'mug', 'bowl', 'coke_bottle', 'knife', 'powerade', 'soap', 'brown_bowl', 'soda_can',
-  'coke_can', 'spaghettios', 'steak_knife', 'wine_bottle', 'coffee_mug', 'drying_rack',
-]
+OBJECTS = ['mug', 'bowl', 'coke_bottle', 'knife', 'powerade', 'soap', 'brown_bowl', 'soda_can', 'coke_can', 'spaghettios', 'steak_knife', 'wine_bottle', 'coffee_mug', 'drying_rack']
+KNIVES = ['knife']
