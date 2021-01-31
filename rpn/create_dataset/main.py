@@ -6,7 +6,7 @@ sys.path.append('..')
 sys.path.append('../..')
 """
 
-from init import load_objects
+from init import load_objects, load_urdf
 from objects import *
 from planner import Planner
 from utils import *
@@ -27,14 +27,14 @@ import torch
 
 from camera import capture, front_view_matrix, overhead_view_matrix
 
-def valid_action_sequence(world, episode_length):
-  env_table = [id for id, type in world.items() if type == 'table'][0]
-  env_ingredients = [id for id, type in world.items() if type in INGREDIENTS]
-  env_cookware = [id for id, type in world.items() if type in COOKWARE]
-  env_containers = [id for id, type in world.items() if type in CONTAINERS]
-  env_sinks = [id for id, type in world.items() if type == 'sink']
-  env_stoves = [id for id, type in world.items() if type == 'stove']
-  env_knives = [id for id, type in world.items() if type in KNIVES]
+def valid_action_sequence(types, episode_length):
+  env_table = [id for id, type in types.items() if type == 'table'][0]
+  env_ingredients = [id for id, type in types.items() if type in INGREDIENTS]
+  env_cookware = [id for id, type in types.items() if type in COOKWARE]
+  env_containers = [id for id, type in types.items() if type in CONTAINERS]
+  env_sinks = [id for id, type in types.items() if type == 'sink']
+  env_stoves = [id for id, type in types.items() if type == 'stove']
+  env_knives = [id for id, type in types.items() if type in KNIVES]
 
   actions = []
   while len(actions) < episode_length:
@@ -69,10 +69,13 @@ def valid_action_sequence(world, episode_length):
 
     if cook:
       actions.append(('pick+place', (cookware, env_table)))
-
   return actions
 
-def execute_pick_and_place(planner, subj, dest, time_step=0.001):
+def execute_pick_and_place(children, types, planner, subj, dest, time_step=0.001):
+  if len(children[subj]) > 0:
+    object_type = types[subj]
+    raise Exception('Trying to move object {} (type: {}) with the following children: {}'.format(subj, object_type, children[subj]))
+
   with world_saved():
     pick_plan, pick_pose = planner.plan('pick', (subj,))
     pick_command = ('pick', (subj, pick_pose), pick_plan)
@@ -83,47 +86,101 @@ def execute_pick_and_place(planner, subj, dest, time_step=0.001):
     place_command = ('place', (subj, dest, place_pose), place_plan)
   place_plan.refine().execute(time_step=time_step)
 
-STOVE_ACTIVE_COLOR = [0.8, 0, 0, 1]
-STOVE_INACTIVE_COLOR = [1, 1, 1, 1]
-COOK_COLOR = [0.396, 0.263, 0.129, 1]
+  for obj_i, children_i in children.items():
+    count = 0
+    if subj in children_i:
+      children_i.remove(subj)
+      count += 1
+    if count > 1:
+      # Means that object was a child to two parents
+      print('This shouldn\'t happen... (0)')
+  children[dest].add(subj)
 
-SINK_ACTIVE_COLOR = [0, 0, 0.8, 1]
-SINK_INACTIVE_COLOR = [1, 1, 1, 1]
-CLEAN_COLOR = [0.1, 0.1, 0.8, 0.5]
+def dfs(node, graph, f):
+  def visit(node, graph, visited, f):
+    visited.add(node)
+    f(node)
+    for child in graph[node]:
+      if child not in visited:
+        visit(child, graph, visited, f)
+  visit(node, graph, set(), f)
 
-PEELED_SIZE = [0.8, 0.8, 0.8]
-PEELED_COLOR = [0.396, 0.263, 0.129, 1]
-
-def execute_activate(id, world):
-  object_type = world[id]
+def execute_activate(id, children, types, textures):
+  object_type = types[id]
   if object_type == 'sink':
-    color = SINK_ACTIVE_COLOR
+    p.changeVisualShape(id, -1, rgbaColor=textures['SINK_ACTIVE_COLOR'])
+    for child in children[id]:
+      p.changeVisualShape(child, -1, rgbaColor=textures['WASHED_COLOR'])
   elif object_type == 'stove':
-    color = STOVE_ACTIVE_COLOR
-  p.changeVisualShape(id, -1, rgbaColor=color)
+    def change_to_burnt(id):
+      if types[id] in INGREDIENTS:
+        p.changeVisualShape(id, -1, textureUniqueId=textures['BURNT'])
+    p.changeVisualShape(id, -1, rgbaColor=textures['STOVE_ACTIVE_COLOR'])
+    dfs(id, children, change_to_burnt)
+  else:
+    raise Exception('Cannot activate object with type {}'.format(object_type))
 
-def execute_deactivate(id, world):
-  object_type = world[id]
+def execute_deactivate(id, children, types, textures):
+  object_type = types[id]
   if object_type == 'sink':
-    color = SINK_INACTIVE_COLOR
+    p.changeVisualShape(id, -1, rgbaColor=textures['SINK_INACTIVE_COLOR'])
   elif object_type == 'stove':
-    color = STOVE_INACTIVE_COLOR
-  p.changeVisualShape(id, -1, rgbaColor=color)
+    p.changeVisualShape(id, -1, rgbaColor=textures['STOVE_INACTIVE_COLOR'])
+  else:
+    raise Exception('Cannot deactivate object with type {}'.format(object_type))
 
-def execute_peel(obj, knife, world):
-  color = PEELED_COLOR
-  p.changeVisualShape(id, -1, rgbaColor=color)
+def update_id(obj, new_obj, children, scales, types, action_seq):
+  # Update children
+  obj_children = children[obj]
+  children.pop(obj)
+  children[new_obj] = obj_children
+  for obj_i, children_i in children.items():
+    if obj in children_i:
+      children_i.remove(obj)
+      children_i.add(new_obj)
 
-def execute_action(action, world, planner):
+  # Update scales
+  obj_scale = scales[obj]
+  scales.pop(obj)
+  scales[new_obj] = obj_scale
+
+  # Update types
+  obj_type = types[obj]
+  types.pop(obj)
+  types[new_obj] = obj_type
+
+  # Update action sequence with new id
+  for i in range(len(action_seq)):
+    action_seq[i] = (action_seq[i][0], tuple(new_obj if id == obj else id for id in action_seq[i][1]))
+
+def execute_peel(obj, knife, types, children, scales, textures, action_seq):
+  # Retrieve type and scale information
+  type_name = types[obj]
+  scale = scales[obj]
+
+  # Save pose and remove object
+  pose = p.getBasePositionAndOrientation(obj, physicsClientId=CLIENT)
+  p.removeBody(obj, physicsClientId=CLIENT)
+
+  # Create new object, set pose
+  new_obj = load_urdf(type_name, globalScaling=0.5*scale)
+  p.resetBasePositionAndOrientation(new_obj, pose[0], pose[1], physicsClientId=CLIENT)
+  p.changeVisualShape(new_obj, -1, rgbaColor=textures['PEELED_COLOR'])
+
+  # Update world state to include new id
+  update_id(obj, new_obj, children, scales, types, action_seq)
+
+def execute_action(action_seq, action_index, types, children, scales, planner, textures):
+  action = action_seq[action_index]
   action_type, ids = action[0], action[1]
   if action_type == 'pick+place':
-    execute_pick_and_place(planner, ids[0], ids[1])
+    execute_pick_and_place(children, types, planner, ids[0], ids[1])
   elif action_type == 'activate':
-    execute_activate(ids[0], world)
+    execute_activate(ids[0], children, types, textures)
   elif action_type == 'deactivate':
-    execute_deactivate(ids[0], world)
+    execute_deactivate(ids[0], children, types, textures)
   elif action_type == 'peel':
-    execute_peel(ids[0], ids[1], world)
+    execute_peel(ids[0], ids[1], types, children, scales, textures, action_seq)
   else:
     raise 'Invalid action.'
 
@@ -141,7 +198,7 @@ def views_to_tensor():
   images = np.concatenate(images, -1)
   return images
 
-def save_timestep(world, output_dir, episode_index, action_index):
+def save_timestep(types, output_dir, episode_index, action_index):
   prefix = '{}/{}_{}'.format(output_dir, episode_index, action_index)
 
   # Restore via `p.restoreState('file.bullet')`
@@ -157,11 +214,11 @@ def save_timestep(world, output_dir, episode_index, action_index):
   # Restore via `pickle.load(file.pkl)`
   json.dump(pose_info, open(prefix + '_poses.json', 'w'))
 
-def save_episode(world, action_seq, output_dir, episode_index, random_state):
+def save_episode(types, action_seq, output_dir, episode_index, random_state):
   prefix = '{}/{}'.format(output_dir, episode_index)
 
   # Restore via `pickle.load(file.pkl)`
-  json.dump(world, open(prefix + '_ids.json', 'w'))
+  json.dump(types, open(prefix + '_ids.json', 'w'))
 
   # Restore via `pickle.load(file.pkl)`
   pickle.dump(action_seq, open(prefix + '_actions.pkl', 'wb'))
@@ -170,15 +227,9 @@ def save_episode(world, action_seq, output_dir, episode_index, random_state):
   pickle.dump(random_state, open(prefix + '_random_state.pkl', 'wb'))
 
 def main(
-    num_episodes=100,
-    episode_length=3,
-    num_ingredients=3,
-    num_containers=3,
-    num_cookware=3,
-    num_objects=2,
-    seed=0,
-    display=False,
-    output_dir='dataset',
+    num_episodes=100, episode_length=3, num_ingredients=3,
+    num_containers=3, num_cookware=3, num_objects=2,
+    seed=0, display=False, output_dir='dataset',
   ):
   # Create output directory
   os.makedirs(output_dir, exist_ok=True)
@@ -205,36 +256,57 @@ def main(
   # Generate `num_episodes` number of datapoints
   for episode_index in range(num_episodes):
     with pb_session(use_gui=False):
+      p.configureDebugVisualizer(p.COV_ENABLE_RENDERING, 1)
+
+      textures = {
+        'BURNT': p.loadTexture("textures/burnt.jpg"),
+
+        # Stove and cooking colors
+        'STOVE_ACTIVE_COLOR': [0.8, 0, 0, 1],
+        'STOVE_INACTIVE_COLOR': [1, 1, 1, 1],
+        'COOK_COLOR': [0.396, 0.263, 0.129, 1],
+
+        # Sink and washing colors
+        'SINK_ACTIVE_COLOR': [0, 0, 0.8, 1],
+        'SINK_INACTIVE_COLOR': [1, 1, 1, 1],
+        'WASHED_COLOR': [0.1, 0.1, 0.8, 0.5],
+
+        # Peeling colors
+        'PEELED_COLOR': [0.99, 0.99, 0.99, 1],
+      }
+
+      # Set GUI camera location
       p.resetDebugVisualizerCamera(
         cameraDistance=0.8,
         cameraYaw=0,
         cameraPitch=-89,
         cameraTargetPosition=[0, 0, 0]
       )
+
       random_state = random.getstate()
 
       # Load environment with objects
-      world = load_objects(num_ingredients, num_cookware, num_containers, num_objects, random_state)
+      types, scales, children = load_objects(num_ingredients, num_cookware, num_containers, num_objects, random_state)
 
       # Sample random action sequence
-      action_seq = valid_action_sequence(world, episode_length)
+      action_seq = valid_action_sequence(types, episode_length)
 
       # Save action sequence for episode
-      save_episode(world, action_seq, output_dir, episode_index, random_state)
+      save_episode(types, action_seq, output_dir, episode_index, random_state)
 
       if display:
         show()
 
-      save_timestep(world, output_dir, episode_index, 0)
+      save_timestep(types, output_dir, episode_index, 0)
 
-      planner = Planner(world)
+      planner = Planner(types)
 
       # Execute action sequence
       print('Executing: {}'.format(action_seq))
-      for action_index, action in enumerate(action_seq):
-        print(action)
-        execute_action(action, world, planner)
-        save_timestep(world, output_dir, episode_index, action_index + 1)
+      for action_index in range(len(action_seq)):
+        print(action_seq[action_index])
+        execute_action(action_seq, action_index, types, children, scales, planner, textures)
+        save_timestep(types, output_dir, episode_index, action_index + 1)
         if display:
           show()
 

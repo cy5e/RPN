@@ -25,24 +25,27 @@ def load_model(path, fixed=True, **kwargs):
     raise ValueError(path)
   return body
 
+def load_urdf(urdf_type, **kwargs):
+  return load_model(URDFS[urdf_type], **kwargs)
+
 def setup():
-  robot = load_model(URDFS['ph_gripper'])
-  table = load_model(URDFS['table'], fixed=True, globalScaling=0.6)
-  return { robot: 'robot', table: 'table' }
+  robot = load_urdf('ph_gripper')
+  table = load_urdf('table', fixed=True, globalScaling=0.6)
+  return { robot: 'robot', table: 'table' }, { robot: 1.0, table: 0.6 }
 
 def place_metatools(table):
   sampled_locations = random.sample(METATOOL_LOCATIONS, 2)
 
-  stove = load_model(URDFS['stove'], fixed=True, globalScaling=0.8)
+  stove = load_urdf('stove', fixed=True, globalScaling=0.8)
   place(stove, table, sampled_locations[0])
 
-  sink = load_model(URDFS['sink'], fixed=True)
+  sink = load_urdf('sink', fixed=True)
   place(sink, table, sampled_locations[1])
 
-  return { stove: 'stove', sink: 'sink' }
+  return { stove: 'stove', sink: 'sink' }, { stove: 0.8, sink: 1.0 }
 
-def get(type, world):
-  for id, type_i in sorted(world.items()):
+def get(type, types):
+  for id, type_i in sorted(types.items()):
     if type_i == type:
       return id
 
@@ -64,16 +67,16 @@ def random_place(body, surface, fixed=(), region=None, max_attempt=10):
     return pose
   return False
 
-def sample_and_place_objects(world, types_and_counts):
-  table = get('table', world)
-  objs = {}
+def sample_and_place_objects(types, types_and_counts):
+  table = get('table', types)
+  types = {}
   for population, count in types_and_counts:
     for _ in range(count):
       type_name = random.sample(population, 1)[0]
-      obj = load_model(URDFS[type_name], fixed=False)
-      random_place(obj, table, world)
-      objs.update({ obj: type_name })
-  return objs
+      obj = load_urdf(type_name, fixed=False)
+      random_place(obj, table, types)
+      types.update({ obj: type_name })
+  return types, { x: 1.0 for x in types }
 
 def load_objects(num_ingredients, num_cookware, num_containers, num_objects, random_state):
   random.setstate(random_state)
@@ -82,11 +85,21 @@ def load_objects(num_ingredients, num_cookware, num_containers, num_objects, ran
     (CONTAINERS, num_containers),
     (INGREDIENTS, num_ingredients),
     (OBJECTS, num_objects),
+    (KNIVES, 1),
   ]
+
   with HideOutput():
-    world = setup()
-    table = get('table', world)
-    world.update(place_metatools(table))
-    world.update(sample_and_place_objects(world, types_and_counts))
-  return world
+    types, scales = setup()
+    table = get('table', types)
+
+    new_types, new_scales = place_metatools(table)
+    types.update(new_types)
+    scales.update(new_scales)
+
+    new_types, new_scales = sample_and_place_objects(types, types_and_counts)
+    types.update(new_types)
+    scales.update(new_scales)
+
+  children = defaultdict(set)
+  return types, scales, children
 
