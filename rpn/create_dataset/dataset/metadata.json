@@ -1,1 +1,1 @@
-{"num_episodes": 1, "episode_length": 7, "num_containers": 2, "num_ingredients": 4, "num_cookware": 2, "num_objects": 2}
+{"num_episodes": 2, "episode_length": 7, "seed": 0, "actions": ["pour", "toast", "peel", "activate", "deactivate", "pick+place"]}

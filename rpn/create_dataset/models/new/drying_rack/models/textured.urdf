@@ -27,6 +27,5 @@
         <mesh filename="model_normalized.obj" scale="0.4 0.4 0.4"/>
       </geometry>
     </collision>
-
   </link>
 </robot>

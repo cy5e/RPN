@@ -16,7 +16,7 @@
     <visual>
       <origin rpy="1.57 0 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="model_normalized.obj" scale="0.2 0.2 0.2"/>
+        <mesh filename="model_normalized.obj" scale="0.3 0.3 0.3"/>
       </geometry>
       <material name="bowl"/>
     </visual>
@@ -24,7 +24,7 @@
     <collision>
       <origin rpy="1.57 0 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="model_normalized.obj" scale="0.2 0.2 0.2"/>
+        <mesh filename="model_normalized.obj" scale="0.3 0.3 0.3"/>
       </geometry>
     </collision>
 
